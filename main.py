@@ -5,7 +5,7 @@ from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 import io
 
-# 1. MODELO DE DATOS DETALLADO
+# 1. MODELO DE DATOS MEJORADO
 class AireAcondicionado:
     def __init__(self, sector, tipo, marca, n_serie, refrigerante):
         self.sector = sector
@@ -13,16 +13,15 @@ class AireAcondicionado:
         self.marca = marca
         self.n_serie = n_serie
         self.refrigerante = refrigerante
-        # Campos de Mantenimiento
-        self.filtros = "Pendiente"
-        self.drenaje = "Pendiente"
-        self.condensadora = "Pendiente"
+        self.filtros = "OK"
+        self.drenaje = "OK"
+        self.condensadora = "OK"
         self.psi = ""
         self.consumo = ""
         self.observaciones = ""
         self.foto_bytes = None
 
-# 2. GENERADOR DE PDF PROFESIONAL
+# 2. GENERADOR DE PDF PROFESIONAL (Soporta múltiples páginas y fotos)
 def generar_pdf_bytes(empresa, cliente, sitio, direccion, tecnico, lista_equipos):
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
@@ -35,51 +34,49 @@ def generar_pdf_bytes(empresa, cliente, sitio, direccion, tecnico, lista_equipos
         canvas_obj.drawString(480, p_y, f"Fecha: {datetime.now().strftime('%d/%m/%Y')}")
         p_y -= 20
         canvas_obj.setFont("Helvetica-Bold", 11)
-        canvas_obj.drawString(50, p_y, f"REPORTE TÉCNICO: {cliente}")
+        canvas_obj.drawString(50, p_y, f"REPORTE DE MANTENIMIENTO: {cliente}")
         p_y -= 15
         canvas_obj.setFont("Helvetica", 10)
-        canvas_obj.drawString(50, p_y, f"Ubicación: {sitio} - {direccion} | Técnico: {tecnico}")
+        canvas_obj.drawString(50, p_y, f"Sitio: {sitio} | Técnico: {tecnico}")
         canvas_obj.line(50, p_y - 5, 550, p_y - 5)
         return p_y - 35
 
     y = dibujar_encabezado(c, height - 50)
 
     for i, eq in enumerate(lista_equipos):
-        # Evaluar espacio (Datos + Checklist + Foto ≈ 280 unidades)
+        # Control de espacio para datos + foto
         if y < 280:
             c.showPage()
             y = dibujar_encabezado(c, height - 50)
 
         c.setFont("Helvetica-Bold", 11)
-        c.drawString(50, y, f"EQUIPO #{i+1} - {eq.sector} ({eq.tipo})")
+        c.drawString(50, y, f"UNIDAD #{i+1} - SECTOR: {eq.sector}")
         y -= 15
         
         c.setFont("Helvetica", 10)
-        c.drawString(60, y, f"Marca: {eq.marca} | S/N: {eq.n_serie} | Gas: {eq.refrigerante}")
+        c.drawString(60, y, f"Equipo: {eq.tipo} {eq.marca} | S/N: {eq.n_serie} | Gas: {eq.refrigerante}")
         y -= 18
         
-        # Bloque de Mantenimiento
+        # Tabla de Mantenimiento Realizado
         c.setFont("Helvetica-Bold", 10)
-        c.drawString(60, y, "ESTADO DEL MANTENIMIENTO:")
+        c.drawString(60, y, "TAREAS REALIZADAS:")
         y -= 15
         c.setFont("Helvetica", 10)
-        check_text = f"• Filtros: {eq.filtros}  |  • Drenaje: {eq.drenaje}  |  • Condensadora: {eq.condensadora}"
-        c.drawString(70, y, check_text)
+        c.drawString(70, y, f"• Limpieza Filtros: {eq.filtros} | • Drenaje: {eq.drenaje} | • Condensadora: {eq.condensadora}")
         y -= 15
-        mediciones = f"• Presión: {eq.psi} PSI  |  • Consumo: {eq.consumo} A"
-        c.drawString(70, y, mediciones)
+        c.drawString(70, y, f"• Presión Gas: {eq.psi} PSI | • Consumo Eléctrico: {eq.consumo} A")
         y -= 15
-        c.drawString(70, y, f"• Notas: {eq.observaciones}")
+        c.drawString(70, y, f"• Notas Técnicas: {eq.observaciones}")
         y -= 10
 
         if eq.foto_bytes:
             try:
                 img = ImageReader(io.BytesIO(eq.foto_bytes))
-                c.drawImage(img, 70, y - 130, width=170, height=120, preserveAspectRatio=True)
-                y -= 140
+                c.drawImage(img, 70, y - 130, width=180, height=120, preserveAspectRatio=True)
+                y -= 145
             except: y -= 10
         
-        y -= 10
+        y -= 5
         c.setDash(1, 2)
         c.line(50, y, 550, y)
         c.setDash(1, 0)
@@ -89,52 +86,52 @@ def generar_pdf_bytes(empresa, cliente, sitio, direccion, tecnico, lista_equipos
     buffer.seek(0)
     return buffer
 
-# 3. INTERFAZ DE USUARIO
+# 3. INTERFAZ STREAMLIT
 st.set_page_config(page_title="ANN Service App", layout="centered")
-st.title("🛠️ Planilla de Mantenimiento ANN")
+st.title("❄️ Gestión de Mantenimiento ANN")
 
 if 'equipos' not in st.session_state:
     st.session_state.equipos = []
 
-# DATOS DE CABECERA
+# DATOS DEL CLIENTE
 with st.container():
     c1, c2 = st.columns(2)
     with c1:
-        cliente = st.text_input("Cliente / Razón Social")
-        sitio = st.text_input("Nombre del Edificio/Sitio")
+        cliente = st.text_input("Cliente / Empresa")
+        sitio = st.text_input("Edificio / Piso")
     with c2:
-        tecnico = st.text_input("Técnico")
-        direccion = st.text_input("Dirección")
+        tecnico = st.text_input("Técnico Responsable")
+        direccion = st.text_input("Dirección del Sitio")
 
 st.divider()
 
-# FORMULARIO DE CARGA
-st.subheader(f"Registro de Equipos ({len(st.session_state.equipos)}/20)")
+# FORMULARIO TÉCNICO
+st.subheader(f"Carga de Equipos ({len(st.session_state.equipos)}/20)")
 
 if len(st.session_state.equipos) < 20:
-    with st.form("form_tecnico", clear_on_submit=True):
+    with st.form("form_mantenimiento", clear_on_submit=True):
         col1, col2 = st.columns(2)
         with col1:
-            sector = st.text_input("Sector del equipo")
-            tipo = st.selectbox("Tipo de Aire", ["Split", "Baja Silueta", "Cassette", "Piso-Techo", "Rooftop", "Vrv/Vrf"])
-            marca = st.text_input("Marca")
-            n_serie = st.text_input("N° de Serie")
+            sector = st.text_input("Ubicación (Ej: Gerencia)")
+            tipo = st.selectbox("Tipo de Unidad", ["Split", "Baja Silueta", "Cassette", "Piso-Techo", "Rooftop", "VRV/VRF"])
+            marca = st.text_input("Marca del Equipo")
+            n_serie = st.text_input("Número de Serie")
         with col2:
-            refrigerante = st.text_input("Tipo de Gas (R410/R22)")
-            psi = st.text_input("Presión de trabajo (PSI)")
-            consumo = st.text_input("Consumo actual (Amper)")
-            filtros = st.radio("Limpieza de Filtros", ["OK", "Realizado", "No requiere"], horizontal=True)
+            refrigerante = st.text_input("Gas Refrigerante")
+            psi = st.text_input("Presión (PSI)")
+            consumo = st.text_input("Amperaje (A)")
+            filtros = st.radio("Filtros de Aire", ["OK", "Limpiados", "Cambiados"], horizontal=True)
         
         col3, col4 = st.columns(2)
         with col3:
-            drenaje = st.radio("Drenaje Despejado", ["OK", "Realizado", "Obstruido"], horizontal=True)
+            drenaje = st.radio("Sistema Drenaje", ["OK", "Destapado", "Corregido"], horizontal=True)
         with col4:
-            condensadora = st.radio("Limpieza Condensadora", ["OK", "Realizado", "Sucia"], horizontal=True)
+            condensadora = st.radio("Unidad Exterior", ["OK", "Limpieza Realizada", "Reparada"], horizontal=True)
             
-        notas = st.text_area("Observaciones técnicas / Notas")
-        foto = st.file_uploader("Captura de imagen del equipo", type=['png', 'jpg', 'jpeg'])
+        notas = st.text_area("Observaciones Finales")
+        foto = st.file_uploader("Adjuntar Foto del Equipo", type=['png', 'jpg', 'jpeg'])
         
-        if st.form_submit_button("💾 GUARDAR ESTE EQUIPO"):
+        if st.form_submit_button("💾 REGISTRAR EQUIPO"):
             if sector:
                 e = AireAcondicionado(sector, tipo, marca, n_serie, refrigerante)
                 e.filtros, e.drenaje, e.condensadora = filtros, drenaje, condensadora
@@ -142,20 +139,20 @@ if len(st.session_state.equipos) < 20:
                 if foto: e.foto_bytes = foto.read()
                 st.session_state.equipos.append(e)
                 st.rerun()
-            else: st.warning("Por favor, indicá el Sector.")
+            else: st.error("Debes indicar el Sector.")
 
-# ACCIONES FINALES
+# DESCARGA
 if st.session_state.equipos:
     st.divider()
-    if st.button("🗑️ Reiniciar todo el reporte"):
+    if st.button("🗑️ Borrar Reporte Actual"):
         st.session_state.equipos = []
         st.rerun()
 
-    reporte_pdf = generar_pdf_bytes("ANN Multiservicios", cliente, sitio, direccion, tecnico, st.session_state.equipos)
+    pdf_final = generar_pdf_bytes("ANN Multiservicios", cliente, sitio, direccion, tecnico, st.session_state.equipos)
     
     st.download_button(
-        label="📄 DESCARGAR REPORTE PARA EL CLIENTE",
-        data=reporte_pdf,
+        label="📥 DESCARGAR REPORTE PDF (20 EQUIPOS)",
+        data=pdf_final,
         file_name=f"Mantenimiento_{cliente}.pdf",
         mime="application/pdf",
         use_container_width=True
