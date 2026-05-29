@@ -1,16 +1,14 @@
 import streamlit as st
 import json
-import os
 from datetime import datetime
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
-from PIL import Image
 import io
 
 # 1. MODELO DE DATOS
 class AireAcondicionado:
-    def __init__(self, sector, marca, modelo, n_serie, tipo, frigorias, refrigerante, cantidad_gas, consumo, fecha):
+    def __init__(self, sector, marca, modelo, n_serie, tipo, frigorias, refrigerante, consumo):
         self.sector = sector
         self.marca = marca
         self.modelo = modelo
@@ -18,144 +16,143 @@ class AireAcondicionado:
         self.tipo = tipo
         self.frigorias = frigorias
         self.refrigerante = refrigerante
-        self.cantidad_gas = cantidad_gas
         self.consumo = consumo
-        self.fecha = fecha
         self.filtros = "OK"
         self.presion = ""
-        self.condensadora = "OK"
         self.drenaje = "OK"
         self.observaciones = ""
         self.foto_bytes = None
 
-# 2. LÓGICA DE GENERACIÓN DE PDF
+# 2. LÓGICA DE GENERACIÓN DE PDF (CON SALTO DE PÁGINA AUTOMÁTICO)
 def generar_pdf_bytes(empresa, cliente, sitio, direccion, tecnico, lista_equipos):
     buffer = io.BytesIO()
     c = canvas.Canvas(buffer, pagesize=letter)
-    y = 750
+    width, height = letter
+    y = height - 50 # Posición inicial (cerca del tope)
 
-    c.setFont("Helvetica-Bold", 16)
-    c.drawString(50, y, empresa.upper())
-    c.setFont("Helvetica", 10)
-    c.drawString(450, y, f"Fecha: {datetime.now().strftime('%d/%m/%Y')}")
-    
-    y -= 30
-    c.setFont("Helvetica-Bold", 12)
-    c.drawString(50, y, "REPORTE TÉCNICO DE MANTENIMIENTO")
-    y -= 20
-    c.setFont("Helvetica", 11)
-    c.drawString(50, y, f"CLIENTE: {cliente} | SITIO: {sitio}")
-    y -= 15
-    c.drawString(50, y, f"DIRECCIÓN: {direccion} | TÉCNICO: {tecnico}")
-    c.line(50, y-10, 550, y-10)
-    y -= 40
+    def encabezado(canvas_obj, pos_y):
+        canvas_obj.setFont("Helvetica-Bold", 14)
+        canvas_obj.drawString(50, pos_y, empresa.upper())
+        canvas_obj.setFont("Helvetica", 9)
+        canvas_obj.drawString(480, pos_y, f"Fecha: {datetime.now().strftime('%d/%m/%Y')}")
+        pos_y -= 20
+        canvas_obj.setFont("Helvetica-Bold", 11)
+        canvas_obj.drawString(50, pos_y, f"REPORTE: {cliente} - {sitio}")
+        pos_y -= 15
+        canvas_obj.setFont("Helvetica", 10)
+        canvas_obj.drawString(50, pos_y, f"Dirección: {direccion} | Técnico: {tecnico}")
+        canvas_obj.line(50, pos_y - 5, 550, pos_y - 5)
+        return pos_y - 30
 
-    for eq in lista_equipos:
-        if y < 250:
+    y = encabezado(c, y)
+
+    for i, eq in enumerate(lista_equipos):
+        # Verificar si hay espacio para el siguiente bloque (datos + imagen necesita ~250 unidades)
+        espacio_necesario = 250 if eq.foto_bytes else 120
+        if y < espacio_necesario:
             c.showPage()
-            y = 750
+            y = height - 50
+            y = encabezado(c, y)
 
         c.setFont("Helvetica-Bold", 11)
-        c.drawString(50, y, f"SECTOR: {eq.sector} | TIPO: {eq.tipo}")
+        c.drawString(50, y, f"EQUIPO #{i+1} - SECTOR: {eq.sector}")
         y -= 15
         c.setFont("Helvetica", 10)
-        c.drawString(60, y, f"Marca/Modelo: {eq.marca} {eq.modelo} | S/N: {eq.n_serie}")
+        c.drawString(60, y, f"Tipo: {eq.tipo} | Marca: {eq.marca} | S/N: {eq.n_serie}")
         y -= 15
-        c.drawString(60, y, f"Frigorías: {eq.frigorias} | Gas: {eq.refrigerante} | Consumo: {eq.consumo}")
+        c.drawString(60, y, f"Gas: {eq.refrigerante} | Presión: {eq.presion} PSI | Consumo: {eq.consumo} A")
         y -= 15
-        c.setFont("Helvetica-Oblique", 10)
-        c.drawString(60, y, f"ESTADO: Filtros: {eq.filtros} | Presión: {eq.presion} PSI | Drenaje: {eq.drenaje}")
+        c.drawString(60, y, f"Estado: Filtros {eq.filtros} / Drenaje {eq.drenaje}")
         y -= 15
-        c.drawString(60, y, f"OBSERVACIONES: {eq.observaciones}")
-        
+        c.drawString(60, y, f"Observaciones: {eq.observaciones}")
+        y -= 10
+
         if eq.foto_bytes:
-            y -= 130
-            img = ImageReader(io.BytesIO(eq.foto_bytes))
-            c.drawImage(img, 60, y, width=150, height=120, preserveAspectRatio=True)
-            y -= 20
-        else:
-            y -= 20
-            
+            try:
+                img_data = io.BytesIO(eq.foto_bytes)
+                img = ImageReader(img_data)
+                # Dibujar imagen (centrada y con tamaño controlado)
+                c.drawImage(img, 70, y - 140, width=180, height=130, preserveAspectRatio=True)
+                y -= 150
+            except:
+                y -= 10
+        
         c.line(50, y, 300, y)
-        y -= 30
+        y -= 25 # Espacio entre equipos
 
     c.save()
     buffer.seek(0)
     return buffer
 
 # 3. INTERFAZ STREAMLIT
-st.set_page_config(page_title="ANN Mantenimiento", layout="centered")
+st.set_page_config(page_title="ANN Mantenimiento v2", layout="wide")
 
-st.title("❄️ Gestión de Mantenimiento HVAC")
+st.title("❄️ Sistema de Mantenimiento ANN")
+st.write("Carga hasta 20 equipos por cliente con fotos individuales.")
 
 if 'equipos' not in st.session_state:
     st.session_state.equipos = []
 
-# --- PASO 1: DATOS GENERALES ---
-with st.expander("1. Datos del Servicio", expanded=True):
-    col1, col2 = st.columns(2)
-    with col1:
-        empresa = st.text_input("Empresa Mantenedora", "ANN Multiservicios")
-        cliente = st.text_input("Cliente")
-    with col2:
-        tecnico = st.text_input("Nombre del Técnico")
-        sitio = st.text_input("Sitio / Edificio")
-    direccion = st.text_input("Dirección Completa")
+# COLUMNA DE DATOS GENERALES
+with st.container():
+    col_a, col_b = st.columns(2)
+    with col_a:
+        empresa = st.text_input("Tu Empresa", "ANN Multiservicios")
+        cliente = st.text_input("Nombre del Cliente")
+    with col_b:
+        tecnico = st.text_input("Técnico a cargo")
+        sitio = st.text_input("Edificio/Sitio")
+    direccion = st.text_input("Dirección del servicio")
 
-# --- PASO 2: AGREGAR EQUIPO ---
-st.subheader("2. Registro de Equipos")
-with st.form("form_equipo", clear_on_submit=True):
-    c1, c2 = st.columns(2)
-    with c1:
-        sector = st.text_input("Sector (Ej: Oficina 1)")
-        tipo = st.selectbox("Tipo de Equipo", ["Split Pared", "Baja Silueta", "Cassette", "Piso-Techo", "Rooftop", "MultiSplit"])
-        marca = st.text_input("Marca")
-        n_serie = st.text_input("Número de Serie")
-    with c2:
-        modelo = st.text_input("Modelo")
-        frigorias = st.text_input("Frigorías")
-        refrigerante = st.text_input("Tipo de Gas")
-        consumo = st.text_input("Consumo (Amper)")
-    
-    st.write("---")
-    st.info("Checklist de Mantenimiento")
-    f_col1, f_col2 = st.columns(2)
-    with f_col1:
-        filtros = st.radio("Filtros limpios", ["OK", "SUCIOS"], horizontal=True)
-        drenaje = st.radio("Drenaje despejado", ["OK", "OBSTRUIDO"], horizontal=True)
-    with f_col2:
-        presion = st.text_input("Presión (PSI)")
-        observaciones = st.text_area("Observaciones adicionales")
-    
-    foto = st.file_uploader("Adjuntar foto del equipo", type=['jpg', 'png', 'jpeg'])
-    
-    submitted = st.form_submit_button("Añadir Equipo al Reporte")
-    if submitted:
-        nuevo_eq = AireAcondicionado(sector, marca, modelo, n_serie, tipo, frigorias, refrigerante, "N/A", consumo, datetime.now().strftime('%d/%m/%Y'))
-        nuevo_eq.filtros = filtros
-        nuevo_eq.presion = presion
-        nuevo_eq.drenaje = drenaje
-        nuevo_eq.observaciones = observaciones
-        if foto:
-            nuevo_eq.foto_bytes = foto.read()
-        st.session_state.equipos.append(nuevo_eq)
-        st.success(f"Equipo en {sector} añadido.")
+st.divider()
 
-# --- PASO 3: REVISIÓN Y DESCARGA ---
+# CARGA DE EQUIPOS
+st.subheader(f"Equipos Cargados: {len(st.session_state.equipos)} / 20")
+
+if len(st.session_state.equipos) < 20:
+    with st.expander("➕ Click aquí para agregar un nuevo equipo"):
+        with st.form("form_nuevo_equipo", clear_on_submit=True):
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                sector = st.text_input("Sector")
+                marca = st.text_input("Marca")
+            with c2:
+                tipo = st.selectbox("Tipo", ["Split", "Baja Silueta", "Cassette", "Piso-Techo", "Rooftop"])
+                n_serie = st.text_input("N° Serie")
+            with c3:
+                refrigerante = st.text_input("Gas")
+                consumo = st.text_input("Amperaje")
+            
+            obs = st.text_area("Observaciones técnicas")
+            foto = st.file_uploader("Foto de este equipo", type=['jpg', 'jpeg', 'png'])
+            
+            btn_add = st.form_submit_button("Guardar Equipo")
+            if btn_add:
+                if sector:
+                    nuevo = AireAcondicionado(sector, marca, "Modelo", n_serie, tipo, "0", refrigerante, consumo)
+                    nuevo.observaciones = obs
+                    if foto:
+                        nuevo.foto_bytes = foto.read()
+                    st.session_state.equipos.append(nuevo)
+                    st.rerun()
+                else:
+                    st.error("Poné al menos el sector para identificar el aire.")
+else:
+    st.warning("Llegaste al límite de 20 equipos por reporte.")
+
+# LISTADO Y DESCARGA
 if st.session_state.equipos:
-    st.subheader(f"3. Resumen ({len(st.session_state.equipos)} equipos)")
-    for i, e in enumerate(st.session_state.equipos):
-        st.text(f"📍 {e.sector} - {e.marca} ({e.tipo})")
-    
-    if st.button("Limpiar Lista"):
+    st.divider()
+    if st.button("🗑️ Borrar todo y empezar de nuevo"):
         st.session_state.equipos = []
         st.rerun()
 
-    pdf_file = generar_pdf_bytes(empresa, cliente, sitio, direccion, tecnico, st.session_state.equipos)
+    pdf_result = generar_pdf_bytes(empresa, cliente, sitio, direccion, tecnico, st.session_state.equipos)
     
     st.download_button(
-        label="📥 Descargar Reporte PDF",
-        data=pdf_file,
-        file_name=f"Reporte_{cliente}_{sitio}.pdf",
-        mime="application/pdf"
+        label="✅ GENERAR Y DESCARGAR PDF FINAL",
+        data=pdf_result,
+        file_name=f"Reporte_{cliente}.pdf",
+        mime="application/pdf",
+        use_container_width=True
     )
