@@ -1,4 +1,4 @@
-Documentación Técnica: Sistema de Gestión de Mantenimiento HVAC (Monolito)
+Documentación Técnica: Sistema de Gestión de Mantenimiento HVAC 
 
 Materia: Programación Avanzada
 
