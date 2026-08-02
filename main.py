@@ -138,12 +138,22 @@ def generar_pdf_bytes(empresa, cliente, sitio, direccion, tecnico, intervencione
         y -= 14
         
         c.setFont("Helvetica", 9)
-        c.drawString(70, y, f"• Filtros: {data['filtros']} | • Drenaje: {data['drenaje']} | • Condensadora: {data['condensadora']}")
-        y -= 14
-        c.drawString(70, y, f"• Presión Gas: {data['psi']} PSI")
-        y -= 14
-        c.drawString(70, y, f"• Observaciones / Trabajos: {data['observaciones']}")
-        y -= 12
+        
+        if data['tipo_trabajo'] == "Mantenimiento Preventivo":
+            c.drawString(70, y, f"• Filtros: {data['filtros']} | • Drenaje: {data['drenaje']} | • Condensadora: {data['condensadora']}")
+            y -= 14
+            c.drawString(70, y, f"• Presión Gas: {data['psi']} PSI")
+            y -= 14
+            c.drawString(70, y, f"• Observaciones: {data['observaciones']}")
+            y -= 12
+        else:
+            # Formato simplificado para SERVICE / AVERÍA
+            c.drawString(70, y, f"• Descripción de Avería: {data['descripcion_averia']}")
+            y -= 14
+            c.drawString(70, y, f"• Tareas a Realizar / Realizadas: {data['tareas_servicio']}")
+            y -= 14
+            c.drawString(70, y, f"• Materiales Necesarios: {data['materiales_necesarios']}")
+            y -= 12
 
         # Adjuntar imagen
         if data['foto_bytes']:
@@ -252,18 +262,37 @@ if direccion:
 
             st.info(f"**Ubicación:** {eq_dict['sector']} | **Marca/Modelo:** {eq_dict['marca']} {eq_dict['modelo']} | **Capacidad:** {eq_dict['frigorias']} Frig/h ({eq_dict['potencia_kw']} kW)")
 
-            with st.form("form_intervencion", clear_on_submit=False):
-                tipo_trabajo = st.radio("Tipo de Intervención", ["Mantenimiento Preventivo", "Service / Reparación de Avería"], horizontal=True)
-                
-                c_i1, c_i2 = st.columns(2)
-                with c_i1:
-                    psi = st.text_input("Presión de Gas (PSI)", value="65")
-                    filtros = st.radio("Filtros de Aire", ["OK", "Limpiados", "Reemplazados"], horizontal=True)
-                with c_i2:
-                    drenaje = st.radio("Sistema Drenaje", ["OK", "Destapado", "Corregido"], horizontal=True)
-                    condensadora = st.radio("Unidad Exterior", ["OK", "Limpiada", "Reparada"], horizontal=True)
+            # Selector de tipo de trabajo (fuera del formulario para refrescar dinámicamente la UI)
+            tipo_trabajo = st.radio("Tipo de Intervención", ["Mantenimiento Preventivo", "Service / Reparación de Avería"], horizontal=True)
 
-                observaciones = st.text_area("Observaciones / Diagnóstico / Trabajo Realizado", placeholder="Detalle cualquier avería reparada o recomendación...")
+            with st.form("form_intervencion", clear_on_submit=False):
+                
+                if tipo_trabajo == "Mantenimiento Preventivo":
+                    c_i1, c_i2 = st.columns(2)
+                    with c_i1:
+                        psi = st.text_input("Presión de Gas (PSI)", value="65")
+                        filtros = st.radio("Filtros de Aire", ["OK", "Limpiados", "Reemplazados"], horizontal=True)
+                    with c_i2:
+                        drenaje = st.radio("Sistema Drenaje", ["OK", "Destapado", "Corregido"], horizontal=True)
+                        condensadora = st.radio("Unidad Exterior", ["OK", "Limpiada", "Reparada"], horizontal=True)
+
+                    observaciones = st.text_area("Observaciones Finales / Recomendaciones", placeholder="Notas de mantenimiento...")
+                    
+                    descripcion_averia = ""
+                    tareas_servicio = ""
+                    materiales_necesarios = ""
+                else:
+                    # Campos específicos para SERVICE / AVERÍA
+                    descripcion_averia = st.text_area("Descripción de la Avería", placeholder="Ej: Fuga de gas, falla en placa electrónica, el compresor no arranca...")
+                    tareas_servicio = st.text_area("Tareas Realizadas / A Realizar", placeholder="Ej: Detección de fuga, reparación de soldadura, presurización con nitrógeno...")
+                    materiales_necesarios = st.text_area("Materiales / Repuestos Necesarios", placeholder="Ej: Capacitor 35uF, garrafa R410A, varilla de plata...")
+                    
+                    psi = ""
+                    filtros = ""
+                    drenaje = ""
+                    condensadora = ""
+                    observaciones = ""
+
                 foto = st.file_uploader("📷 Adjuntar Foto del Equipo / Trabajo Terminado", type=['png', 'jpg', 'jpeg'])
 
                 if st.form_submit_button("📌 REGISTRAR TRABAJO EN ESTE EQUIPO"):
@@ -277,6 +306,9 @@ if direccion:
                             'drenaje': drenaje,
                             'condensadora': condensadora,
                             'observaciones': observaciones,
+                            'descripcion_averia': descripcion_averia,
+                            'tareas_servicio': tareas_servicio,
+                            'materiales_necesarios': materiales_necesarios,
                             'foto_bytes': foto_b
                         }
                     }
@@ -288,7 +320,7 @@ if st.session_state.intervenciones_actuales:
     st.subheader(f"3. Resumen del Reporte ({len(st.session_state.intervenciones_actuales)} equipos intervenidos)")
 
     for k, item in st.session_state.intervenciones_actuales.items():
-        st.text(f"• {item['equipo']['sector']} | {item['equipo']['marca']} | {item['datos']['tipo_trabajo']} | PSI: {item['datos']['psi']}")
+        st.text(f"• {item['equipo']['sector']} | {item['equipo']['marca']} | {item['datos']['tipo_trabajo']}")
 
     c_b1, c_b2 = st.columns(2)
     with c_b1:
